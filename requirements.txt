@@ -1,8 +1,11 @@
 streamlit
-numpy
+numpy<2
 Pillow
 ultralytics
 torch==2.2.2
 torchvision==0.17.2
 opencv-python-headless==4.9.0.80
 easyocr
+pytesseract
+pandas
+openpyxl
