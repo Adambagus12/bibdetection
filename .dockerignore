@@ -1,0 +1,11 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+.vscode
+.idea
+runs/
+*.xlsx
+README.dataset.txt
+README.roboflow.txt
