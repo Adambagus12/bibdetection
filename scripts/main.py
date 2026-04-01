@@ -4,8 +4,6 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import cv2
-import tkinter as tk
-from tkinter import filedialog
 import pandas as pd
 
 from modules.detector import Detector
@@ -53,12 +51,8 @@ if len(sys.argv) >= 3:
     video_path = sys.argv[1]
     DB_PATH = sys.argv[2]
 else:
-    DB_PATH = r"D:\bib - detection\SHARE RESULT BANUA RUN 2025.xlsx"
-
-    root = tk.Tk()
-    root.withdraw()
-
-    video_path = filedialog.askopenfilename()
+    print("ERROR: Jalankan melalui Streamlit app.")
+    exit()
 
 print("VIDEO:", video_path)
 
@@ -149,7 +143,7 @@ while True:
     # PROGRESS
     # =========================
     progress = int((frame_count / total_frames) * 100)
-    print(f"PROGRESS:{progress}")
+    print(f"PROGRESS:{progress}", flush=True)
 
     current_time = time_ocr.read_time(frame)
 
@@ -188,7 +182,7 @@ while True:
                         current_time
                     )
 
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
     cv2.imwrite(FRAME_PATH, frame)
 
@@ -207,8 +201,8 @@ for bib in detected_numbers:
 
     data.append({
         "Bib": bib,
-        "Nama": runner.get("nama",""),
-        "Kategori": runner.get("kategori",""),
+        "Nama": runner.get("nama", ""),
+        "Kategori": runner.get("kategori", ""),
         "Waktu Finish": time_str
     })
 
