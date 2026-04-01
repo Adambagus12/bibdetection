@@ -17,7 +17,9 @@ from scripts.finish_module import FinishTimeSystem
 # =========================
 # DEFAULT
 # =========================
-MODEL_PATH = "../models/best_final.pt"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "best_final.pt")
+
 
 CONFIDENCE = 0.45
 FRAME_SKIP = 1
