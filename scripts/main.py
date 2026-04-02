@@ -1,6 +1,9 @@
 import sys
 import os
 
+# 🔥 FIX: flush otomatis setiap baris tanpa perlu flush=True satu-satu
+sys.stdout.reconfigure(line_buffering=True)
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import cv2
@@ -20,12 +23,10 @@ from scripts.finish_module import FinishTimeSystem
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "..", "models", "best_final.pt")
 
-
 CONFIDENCE = 0.45
 FRAME_SKIP = 1
 AUTO_MODE = False
 
-# 🔥 PERBAIKAN RESIZE (NAIKKAN)
 RESIZE_WIDTH = 960
 
 # =========================
@@ -58,25 +59,29 @@ else:
 
 print("VIDEO:", video_path)
 
-database = RunnerDatabase(DB_PATH)
-
 # =========================
 # OUTPUT
 # =========================
-BASE_DIR = os.path.dirname(__file__)
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 FRAME_PATH = os.path.join(OUTPUT_DIR, "frame.jpg")
 
 # =========================
-# INIT
+# DATABASE
+# =========================
+print("Loading database...")
+database = RunnerDatabase(DB_PATH)
+print("Database loaded.")
+
+# =========================
+# INIT VIDEO
 # =========================
 cap = cv2.VideoCapture(video_path)
 
 if not cap.isOpened():
-    print("ERROR VIDEO")
-    exit()
+    print("ERROR VIDEO: Tidak bisa membuka file video.")
+    exit(1)
 
 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 if total_frames == 0:
@@ -85,19 +90,26 @@ if total_frames == 0:
 print("CONF:", CONFIDENCE)
 print("FRAME_SKIP:", FRAME_SKIP)
 print("AUTO_MODE:", AUTO_MODE)
+print("TOTAL_FRAMES:", total_frames)
 
+# =========================
+# INIT MODEL
+# =========================
+print("Loading model...")
 detector = Detector(MODEL_PATH, CONFIDENCE)
+print("Model loaded.")
 
 time_ocr = TimeOCR()
 finish_system = FinishTimeSystem()
 
 detected_numbers = set()
-cache_text = {}
 frame_count = 0
 
 # =========================
 # LOOP
 # =========================
+print("Mulai deteksi...")
+
 while True:
     ret, frame = cap.read()
 
@@ -106,46 +118,35 @@ while True:
 
     frame_count += 1
 
-    # =========================
-    # 🔥 RESIZE FRAME (FIX AKURASI)
-    # =========================
+    # RESIZE FRAME
     h, w = frame.shape[:2]
     scale = RESIZE_WIDTH / w
     frame = cv2.resize(frame, (RESIZE_WIDTH, int(h * scale)))
 
-    # =========================
     # FPS CONTROL (MANUAL)
-    # =========================
     if not AUTO_MODE:
         if frame_count % FRAME_SKIP != 0:
             continue
 
-    # =========================
     # DETECTION
-    # =========================
     boxes = detector.detect(frame)
 
-    # =========================
-    # 🔥 ADAPTIVE (LEBIH AMAN)
-    # =========================
+    # ADAPTIVE
     if AUTO_MODE:
         num_boxes = len(boxes)
-
         if num_boxes > 5:
             dynamic_skip = 1
         elif num_boxes > 2:
             dynamic_skip = 2
         else:
-            dynamic_skip = 1  # 🔥 FIX: jangan terlalu besar
+            dynamic_skip = 1
 
         if frame_count % dynamic_skip != 0:
             continue
 
-    # =========================
     # PROGRESS
-    # =========================
     progress = int((frame_count / total_frames) * 100)
-    print(f"PROGRESS:{progress}", flush=True)
+    print(f"PROGRESS:{progress}")
 
     current_time = time_ocr.read_time(frame)
 
@@ -156,11 +157,7 @@ while True:
         if crop is None or crop.size == 0:
             continue
 
-        # =========================
-        # 🔥 RESIZE OCR (AKURASI)
-        # =========================
         crop = cv2.resize(crop, None, fx=2, fy=2)
-
         processed = preprocess_image(crop)
 
         if frame_count % 7 == 0:
@@ -173,6 +170,8 @@ while True:
 
             if runner:
                 detected_numbers.add(matched_bib)
+                # 🔥 kirim bib + nomor frame asli
+                print(f"DETECTED:{matched_bib}:FRAME:{frame_count}:TOTAL:{total_frames}")
 
                 if current_time:
                     finish_system.process(
@@ -189,10 +188,13 @@ while True:
     cv2.imwrite(FRAME_PATH, frame)
 
 cap.release()
+print("Video selesai diproses.")
 
 # =========================
 # EXPORT
 # =========================
+print("Menyimpan hasil...")
+
 results = finish_system.get_results()
 
 data = []
@@ -209,7 +211,8 @@ for bib in detected_numbers:
     })
 
 df = pd.DataFrame(data)
+csv_out = os.path.join(OUTPUT_DIR, "hasil_bib.csv")
+df.to_csv(csv_out, index=False)
 
-df.to_csv(os.path.join(OUTPUT_DIR, "hasil_bib.csv"), index=False)
-
+print(f"Tersimpan: {len(data)} runner terdeteksi.")
 print("DONE")

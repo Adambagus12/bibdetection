@@ -4,20 +4,38 @@ import os
 import pandas as pd
 import subprocess
 import cv2
+from datetime import datetime
 
 st.set_page_config(page_title="Deteksi Bib", layout="wide")
 
-if "processed" not in st.session_state:
-    st.session_state.processed = False
-
+# =========================
+# SESSION STATE
+# =========================
+if "logs" not in st.session_state:
+    st.session_state.logs = []
+if "detections" not in st.session_state:
+    st.session_state.detections = []
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+if "done" not in st.session_state:
+    st.session_state.done = False
 if "csv_path" not in st.session_state:
     st.session_state.csv_path = None
 
-st.title("🎯 Sistem Deteksi Bib")
+def add_log(msg: str):
+    ts = datetime.now().strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{ts}] {msg}")
+
+def add_detection(bib: str, frame_num: str, total: str):
+    ts = datetime.now().strftime("%H:%M:%S")
+    no = len(st.session_state.detections) + 1
+    st.session_state.detections.append(f"#{no:03d} [{ts}] Bib {bib} — frame {frame_num}/{total}")
 
 # =========================
-# MODE
+# KONTEN UTAMA
 # =========================
+st.title("🎯 Sistem Deteksi Bib")
+
 mode = st.radio("Mode", ["Manual", "Auto (Adaptive)"])
 
 if mode == "Manual":
@@ -29,144 +47,197 @@ else:
     fps = 1
     auto_flag = "1"
 
-# =========================
-# UPLOAD
-# =========================
 col1, col2 = st.columns(2)
 
 with col1:
     video_file = st.file_uploader("Video", type=["mp4", "avi", "mkv"])
     db_file = st.file_uploader("Database", type=["xlsx"])
 
+    if video_file:
+        add_log(f"Video dipilih: {video_file.name} ({round(video_file.size/1024/1024, 2)} MB)")
+    if db_file:
+        add_log(f"Database dipilih: {db_file.name}")
+
 with col2:
     if video_file:
         st.video(video_file)
 
-# =========================
-# PROCESS
-# =========================
-if st.button("🚀 Proses"):
+if st.button("🚀 Proses", disabled=st.session_state.processing):
 
     if not video_file or not db_file:
         st.error("❌ Harap upload Video dan Database terlebih dahulu.")
+        add_log("ERROR: Video atau database belum diupload.")
         st.stop()
+
+    st.session_state.done = False
+    st.session_state.csv_path = None
+    st.session_state.detections = []
+    st.session_state.processing = True
+
+    add_log("Menyimpan file sementara...")
 
     temp_dir = tempfile.mkdtemp()
 
     video_path = os.path.join(temp_dir, video_file.name)
     with open(video_path, "wb") as f:
         f.write(video_file.read())
+    add_log(f"Video disimpan: {video_file.name}")
 
     db_path = os.path.join(temp_dir, db_file.name)
     with open(db_path, "wb") as f:
         f.write(db_file.read())
+    add_log(f"Database disimpan: {db_file.name}")
 
-    st.info("⚙️ Proses deteksi berjalan...")
+    add_log(f"Mulai proses — CONF:{confidence} SKIP:{fps} AUTO:{auto_flag}")
 
-    col_frame, col_log = st.columns([2, 1])
+    # =========================
+    # LAYOUT: preview | bib
+    # =========================
+    col_preview, col_det = st.columns([2, 1])
 
-    with col_frame:
+    with col_preview:
         st.markdown("**📸 Live Preview**")
         frame_placeholder = st.empty()
 
-    with col_log:
-        st.markdown("**📋 Log**")
-        log_placeholder = st.empty()
+    with col_det:
+        det_header = st.empty()
+        det_box = st.empty()
 
     progress_bar = st.progress(0, text="Memproses video...")
 
-    process = subprocess.Popen(
-        [
-            "python",
-            "scripts/main.py",
-            video_path,
-            db_path,
-            str(confidence),
-            str(fps),
-            auto_flag
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="ignore"
-    )
+    with st.expander("📋 Log", expanded=False):
+        log_box = st.empty()
 
-    log_lines = []
+    def render_panels():
+        total_det = len(st.session_state.detections)
+        det_header.markdown(f"**🎯 Bib Terdeteksi ({total_det})**")
+        det_box.code(
+            "\n".join(st.session_state.detections[-40:]) if st.session_state.detections else "— belum ada deteksi —",
+            language="bash"
+        )
+        log_box.code(
+            "\n".join(st.session_state.logs[-30:]) if st.session_state.logs else "— belum ada aktivitas —",
+            language="bash"
+        )
 
-    while True:
-        line = process.stdout.readline()
+    render_panels()
 
-        if not line:
-            break
+    try:
+        process = subprocess.Popen(
+            [
+                "python",
+                "scripts/main.py",
+                video_path,
+                db_path,
+                str(confidence),
+                str(fps),
+                auto_flag
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="ignore"
+        )
 
-        line = line.strip()
+        while True:
+            line = process.stdout.readline()
 
-        if not line:
-            continue
+            if not line:
+                break
 
-        # =========================
-        # PROGRESS BAR
-        # =========================
-        if "PROGRESS:" in line:
-            try:
-                p = int(line.split(":")[1].strip())
-                p = max(0, min(p, 100))
-                progress_bar.progress(p, text=f"Memproses video... {p}%")
-            except:
-                pass
+            line = line.strip()
+            if not line:
+                continue
 
-        # =========================
-        # LOG (semua baris termasuk error)
-        # =========================
+            if line.startswith("PROGRESS:"):
+                try:
+                    p = int(line.split(":")[1].strip())
+                    p = max(0, min(p, 100))
+                    progress_bar.progress(p, text=f"Memproses video... {p}%")
+                except:
+                    pass
+
+            elif line.startswith("DETECTED:"):
+                try:
+                    parts = line.split(":")
+                    bib = parts[1].strip()
+                    frame_num = parts[3].strip() if len(parts) >= 4 else "?"
+                    total = parts[5].strip() if len(parts) >= 6 else "?"
+                    add_detection(bib, frame_num, total)
+                except:
+                    add_log(f"DETECTED (parse error): {line}")
+                render_panels()
+
+            else:
+                add_log(line)
+                render_panels()
+
+            frame_path = os.path.join("scripts", "output", "frame.jpg")
+            if os.path.exists(frame_path):
+                img = cv2.imread(frame_path)
+                if img is not None:
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    frame_placeholder.image(img, use_container_width=True)
+
+        process.wait()
+
+        if process.returncode == 0:
+            progress_bar.progress(100, text="✅ Selesai!")
+            add_log("✅ Proses selesai!")
+            st.session_state.done = True
+            st.session_state.csv_path = os.path.join("scripts", "output", "hasil_bib.csv")
         else:
-            log_lines.append(line)
-            # Tampilkan 40 baris terakhir supaya tidak terlalu panjang
-            log_placeholder.code("\n".join(log_lines[-40:]), language="bash")
+            progress_bar.progress(100, text="❌ Terjadi error")
+            add_log(f"❌ Proses gagal. Return code: {process.returncode}")
 
-        # =========================
-        # LIVE FRAME PREVIEW
-        # =========================
-        frame_path = os.path.join("scripts", "output", "frame.jpg")
-        if os.path.exists(frame_path):
-            img = cv2.imread(frame_path)
-            if img is not None:
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                frame_placeholder.image(img, use_container_width=True)
+    except Exception as e:
+        add_log(f"❌ Exception: {str(e)}")
 
-    process.wait()
+    finally:
+        st.session_state.processing = False
+        render_panels()
 
-    # =========================
-    # CEK STATUS AKHIR
-    # =========================
-    if process.returncode == 0:
-        progress_bar.progress(100, text="✅ Selesai!")
-        st.success("✅ Deteksi selesai!")
-        st.session_state.processed = True
-        st.session_state.csv_path = "scripts/output/hasil_bib.csv"
-    else:
-        progress_bar.progress(100, text="❌ Terjadi error")
-        st.error("❌ Proses gagal. Lihat log di atas untuk detail error.")
+    st.rerun()
 
 # =========================
-# RESULT
+# RESULT + BIB DETEKSI (tetap tampil setelah selesai)
 # =========================
-if st.session_state.processed:
+if st.session_state.done:
+    csv_path = st.session_state.csv_path or os.path.join("scripts", "output", "hasil_bib.csv")
 
-    csv_path = st.session_state.csv_path
+    col_result, col_det = st.columns([2, 1])
 
-    if os.path.exists(csv_path):
-        df = pd.read_csv(csv_path)
+    with col_result:
+        if os.path.exists(csv_path):
+            df = pd.read_csv(csv_path)
+            st.subheader(f"📊 Hasil Deteksi ({len(df)} runner)")
+            st.dataframe(df, use_container_width=True)
 
-        st.subheader("📊 Hasil Deteksi")
-        st.dataframe(df, use_container_width=True)
+            with open(csv_path, "rb") as f:
+                st.download_button(
+                    label="⬇️ Download CSV",
+                    data=f,
+                    file_name="hasil_bib.csv",
+                    mime="text/csv"
+                )
+        else:
+            st.warning("⚠️ File hasil tidak ditemukan.")
 
-        with open(csv_path, "rb") as f:
-            st.download_button(
-                label="⬇️ Download CSV",
-                data=f,
-                file_name="hasil_bib.csv",
-                mime="text/csv"
-            )
-    else:
-        st.warning("⚠️ File hasil tidak ditemukan.")
+    with col_det:
+        total_det = len(st.session_state.detections)
+        st.markdown(f"**🎯 Bib Terdeteksi ({total_det})**")
+        st.code(
+            "\n".join(st.session_state.detections) if st.session_state.detections else "— tidak ada deteksi —",
+            language="bash"
+        )
+
+# =========================
+# LOG (selalu di bawah)
+# =========================
+if not st.session_state.processing:
+    with st.expander("📋 Log", expanded=False):
+        st.code(
+            "\n".join(st.session_state.logs[-30:]) if st.session_state.logs else "— belum ada aktivitas —",
+            language="bash"
+        )
