@@ -10,3 +10,7 @@ pytesseract
 pandas
 openpyxl
 rapidfuzz
+fastapi
+uvicorn[standard]
+python-multipart
+aiofiles

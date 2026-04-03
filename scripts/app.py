@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import subprocess
 import cv2
+import requests
 from datetime import datetime
 
 st.set_page_config(page_title="Deteksi Bib", layout="wide")
@@ -21,6 +22,12 @@ if "done" not in st.session_state:
     st.session_state.done = False
 if "csv_path" not in st.session_state:
     st.session_state.csv_path = None
+if "video_server_path" not in st.session_state:
+    st.session_state.video_server_path = None
+if "video_uploaded" not in st.session_state:
+    st.session_state.video_uploaded = False
+
+FASTAPI_URL = "http://localhost:8000"
 
 def add_log(msg: str):
     ts = datetime.now().strftime("%H:%M:%S")
@@ -50,11 +57,77 @@ else:
 col1, col2 = st.columns(2)
 
 with col1:
-    video_file = st.file_uploader("Video", type=["mp4", "avi", "mkv"])
-    db_file = st.file_uploader("Database", type=["xlsx"])
+    # -------------------------
+    # VIDEO UPLOADER + PROGRESS
+    # -------------------------
+    video_file = st.file_uploader("🎬 Video", type=["mp4", "avi", "mkv"])
+    db_file = st.file_uploader("📂 Database", type=["xlsx"])
 
     if video_file:
-        add_log(f"Video dipilih: {video_file.name} ({round(video_file.size/1024/1024, 2)} MB)")
+        size_mb = round(video_file.size / 1024 / 1024, 2)
+        st.info(f"📁 {video_file.name} ({size_mb} MB)")
+
+        # Reset jika file baru dipilih
+        if st.session_state.get("last_video_name") != video_file.name:
+            st.session_state.video_uploaded = False
+            st.session_state.video_server_path = None
+            st.session_state["last_video_name"] = video_file.name
+
+        if not st.session_state.video_uploaded:
+            if st.button("☁️ Upload Video ke Server"):
+                upload_bar = st.progress(0, text="⏫ Mengupload video...")
+                upload_status = st.empty()
+
+                try:
+                    # Baca data video
+                    video_data = video_file.read()
+                    total_size = len(video_data)
+                    chunk_size = 1024 * 512  # 512KB per chunk
+                    uploaded = 0
+                    chunks = []
+
+                    # Simulasi progress membaca chunk
+                    for i in range(0, total_size, chunk_size):
+                        chunk = video_data[i:i + chunk_size]
+                        chunks.append(chunk)
+                        uploaded += len(chunk)
+                        pct = min(int(uploaded / total_size * 90), 90)
+                        upload_bar.progress(pct, text=f"⏫ Mengupload video... {pct}%")
+
+                    upload_bar.progress(92, text="⏫ Mengirim ke server...")
+
+                    # Kirim ke FastAPI
+                    response = requests.post(
+                        f"{FASTAPI_URL}/upload/video",
+                        files={"file": (video_file.name, video_data, "video/mp4")},
+                        timeout=600
+                    )
+
+                    result = response.json()
+
+                    if result["status"] == "ok":
+                        st.session_state.video_server_path = result["path"]
+                        st.session_state.video_uploaded = True
+                        upload_bar.progress(100, text="✅ Upload selesai!")
+                        upload_status.success(f"✅ {result['filename']} berhasil diupload! ({size_mb} MB)")
+                        add_log(f"Video diupload ke server: {result['filename']} ({size_mb} MB)")
+                    else:
+                        upload_bar.empty()
+                        upload_status.error(f"❌ Gagal upload: {result.get('message', 'Unknown error')}")
+                        add_log(f"ERROR upload video: {result.get('message')}")
+
+                except requests.exceptions.ConnectionError:
+                    upload_bar.empty()
+                    upload_status.error("❌ Tidak bisa terhubung ke upload server. Pastikan FastAPI berjalan.")
+                    add_log("ERROR: FastAPI server tidak bisa dihubungi.")
+                except Exception as e:
+                    upload_bar.empty()
+                    upload_status.error(f"❌ Error: {str(e)}")
+                    add_log(f"ERROR upload: {str(e)}")
+
+        else:
+            st.success(f"✅ Video sudah diupload — siap diproses!")
+
     if db_file:
         add_log(f"Database dipilih: {db_file.name}")
 
@@ -62,11 +135,19 @@ with col2:
     if video_file:
         st.video(video_file)
 
+# =========================
+# TOMBOL PROSES
+# =========================
 if st.button("🚀 Proses", disabled=st.session_state.processing):
 
     if not video_file or not db_file:
         st.error("❌ Harap upload Video dan Database terlebih dahulu.")
         add_log("ERROR: Video atau database belum diupload.")
+        st.stop()
+
+    if not st.session_state.video_uploaded or not st.session_state.video_server_path:
+        st.error("❌ Harap klik 'Upload Video ke Server' terlebih dahulu.")
+        add_log("ERROR: Video belum diupload ke server.")
         st.stop()
 
     st.session_state.done = False
@@ -78,11 +159,11 @@ if st.button("🚀 Proses", disabled=st.session_state.processing):
 
     temp_dir = tempfile.mkdtemp()
 
-    video_path = os.path.join(temp_dir, video_file.name)
-    with open(video_path, "wb") as f:
-        f.write(video_file.read())
-    add_log(f"Video disimpan: {video_file.name}")
+    # Gunakan path video dari FastAPI (sudah tersimpan di server)
+    video_path = st.session_state.video_server_path
+    add_log(f"Menggunakan video dari server: {os.path.basename(video_path)}")
 
+    # Simpan database ke temp
     db_path = os.path.join(temp_dir, db_file.name)
     with open(db_path, "wb") as f:
         f.write(db_file.read())
@@ -187,6 +268,21 @@ if st.button("🚀 Proses", disabled=st.session_state.processing):
             add_log("✅ Proses selesai!")
             st.session_state.done = True
             st.session_state.csv_path = os.path.join("scripts", "output", "hasil_bib.csv")
+
+            # Hapus file video temp dari server setelah selesai
+            try:
+                requests.delete(
+                    f"{FASTAPI_URL}/upload/video",
+                    json={"path": video_path},
+                    timeout=10
+                )
+                add_log("File video temp dihapus dari server.")
+            except:
+                pass
+
+            st.session_state.video_uploaded = False
+            st.session_state.video_server_path = None
+
         else:
             progress_bar.progress(100, text="❌ Terjadi error")
             add_log(f"❌ Proses gagal. Return code: {process.returncode}")
