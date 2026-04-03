@@ -12,7 +12,7 @@ st.set_page_config(page_title="Deteksi Bib", layout="wide")
 # =========================
 # DETEKSI ENVIRONMENT
 # =========================
-IS_SERVER = os.environ.get("IS_SERVER", "0") == "1"
+IS_SERVER = False
 FASTAPI_URL = "http://localhost:8000"
 
 # =========================
