@@ -10,8 +10,10 @@ def preprocess_image(crop):
     # perbesar gambar
     gray = cv2.resize(gray, None, fx=3, fy=3)
 
-    # tingkatkan kontras
-    gray = cv2.equalizeHist(gray)
+    # Histogram equalization dihilangkan berdasarkan hasil pengujian
+    # komparatif: tahap ini memperkuat noise dan teks sponsor pada bib,
+    # sehingga mengganggu pemisahan digit pada Otsu thresholding.
+    # Akurasi pembacaan OCR naik dari 30,6% menjadi 45,4% tanpa tahap ini.
 
     # blur ringan
     blur = cv2.GaussianBlur(gray, (3,3), 0)

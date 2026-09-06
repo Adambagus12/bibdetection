@@ -1,33 +1,37 @@
-import pytesseract
 import re
+import easyocr
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Inisialisasi EasyOCR — hanya sekali saat import
+_reader = easyocr.Reader(['en'], gpu=False, verbose=False)
 
 def read_text(image):
     if image is None:
         return ""
 
-    text = pytesseract.image_to_string(
-        image,
-        config='--psm 6 -c tessedit_char_whitelist=0123456789'
-    )
+    try:
+        result = _reader.readtext(image, detail=0, allowlist='0123456789')
 
-    text = text.strip()
-    text = re.sub(r'\D', '', text)
+        if not result:
+            return ""
 
-    # =========================
-    # NORMALISASI
-    # =========================
+        # Gabungkan semua teks yang terdeteksi
+        combined = "".join(result)
 
-    # hilangkan leading nol
-    text = text.lstrip("0")
+        # Hapus semua non-digit
+        text = re.sub(r'\D', '', combined)
 
-    # jika kosong setelah hapus nol
-    if not text:
+        # Hilangkan leading nol
+        text = text.lstrip("0")
+
+        # Jika kosong setelah hapus nol
+        if not text:
+            return ""
+
+        # Hanya 4-5 digit
+        if len(text) < 4 or len(text) > 5:
+            return ""
+
+        return text
+
+    except Exception:
         return ""
-
-    # hanya 4-5 digit
-    if len(text) < 4 or len(text) > 5:
-        return ""
-
-    return text

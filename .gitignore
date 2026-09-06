@@ -1,1 +1,33 @@
-datasets
+# Lingkungan virtual dan cache Python
+venv/
+__pycache__/
+*.pyc
+
+# Berkas model (ukuran terlalu besar untuk repositori)
+models/*.pt
+models/runs/
+
+# Data video dan dataset
+vidio/
+datasets/
+*.mp4
+*.mkv
+*.avi
+
+# Basis data peserta (memuat data pribadi)
+*.xlsx
+
+# Keluaran hasil eksperimen
+output/
+scripts/output/
+scripts/output_bukti/
+runs/
+scripts/runs/
+
+# Berkas log
+log_*.txt
+
+# Berkas sistem
+*.lnk
+*.bat
+scripts/.streamlit/

@@ -5,13 +5,13 @@ import cv2
 # =========================
 # LOAD MODEL
 # =========================
-model = YOLO("../models/best.pt") # pastikan best.pt ada di folder project
+model = YOLO("../../models/best_roboflow_v8n.pt")
 
 # =========================
 # FOLDER
 # =========================
-image_folder = "../datasets/video_frames/images"
-label_folder = "../datasets/video_frames/labels"
+image_folder = "../../datasets/video_framesv8n/images"
+label_folder = "../../datasets/video_framesv8n/labels"
 
 if not os.path.exists(label_folder):
     os.makedirs(label_folder)

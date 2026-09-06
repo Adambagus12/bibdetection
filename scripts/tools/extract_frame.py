@@ -16,7 +16,7 @@ if not video_path:
 # =========================
 # KONFIGURASI
 # =========================
-output_folder = "../datasets/video_frames/images"
+output_folder = "../datasets/video_framesv8n/images"
 interval = 0.5  # detik
 
 # =========================

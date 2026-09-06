@@ -1,8 +1,8 @@
 import cv2
 import os
 
-image_folder = "../datasets/video_frames/images"
-label_folder = "../datasets/video_frames/labels"
+image_folder = "../datasets/video_framesv8n/images"
+label_folder = "../datasets/video_framesv8n/labels"
 
 # jumlah gambar yang ingin dicek
 max_check = 20  

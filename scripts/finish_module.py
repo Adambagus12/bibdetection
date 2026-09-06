@@ -1,10 +1,12 @@
 class FinishTimeSystem:
-    def __init__(self):
+    def __init__(self, min_frame_valid=2):
         # simpan hasil terbaik
         self.best_detection = {}
 
         # counter untuk stabilisasi OCR
         self.counter = {}
+
+        self.min_frame_valid = min_frame_valid
 
     def process(self, matched_bib, text, x1, y1, x2, y2, conf, frame, timestamp):
 
@@ -18,17 +20,22 @@ class FinishTimeSystem:
         cx = (x1 + x2) // 2
 
         # =========================
-        # ZONA FINISH (DIPERLUAS)
+        # ZONA FINISH (DIHAPUS)
         # =========================
-        if not (frame_w * 0.2 < cx < frame_w * 0.8):
-            return
+        # Filter posisi horizontal dihapus. Sistem ini adalah verifikasi
+        # cadangan (bukan pengukur waktu/posisi presisi), sehingga yang
+        # menentukan valid/tidaknya sebuah bib adalah APAKAH ia
+        # teridentifikasi secara konsisten di video (dijaga oleh
+        # multi-frame validation di bawah), bukan DI MANA posisinya saat
+        # terdeteksi. cx tetap dihitung (untuk kemungkinan penggunaan lain
+        # di masa depan), tapi tidak lagi dipakai untuk menolak deteksi.
 
         # =========================
-        # MULTI FRAME (LEBIH RINGAN)
+        # MULTI FRAME VALIDATION
         # =========================
         self.counter[text] = self.counter.get(text, 0) + 1
 
-        if self.counter[text] < 1:
+        if self.counter[text] < self.min_frame_valid:
             return
 
         # =========================
@@ -38,10 +45,10 @@ class FinishTimeSystem:
         score = area * conf
 
         # =========================
-        # FIX UTAMA 🔥
+        # SIMPAN / UPDATE DETEKSI TERBAIK
         # =========================
 
-        # 1. Kalau belum ada → simpan langsung
+        # 1. Kalau belum ada -> simpan langsung
         if matched_bib not in self.best_detection:
             self.best_detection[matched_bib] = {
                 "score": score,
